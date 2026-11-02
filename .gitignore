@@ -1,0 +1,6 @@
+_tools/
+*.pyc
+__pycache__/
+.env
+cookie*.txt
+cookies*.json

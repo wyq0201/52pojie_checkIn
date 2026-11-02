@@ -189,6 +189,22 @@ def is_waf_page(text: str) -> bool:
     return ("wzwsquestion" in text or "LZ=" in text) and "waf_zw_verify" in text
 
 
+def is_js_challenge(text: str) -> bool:
+    """
+    判断是否为网宿的第二种挑战：混淆 JS 挑战页。
+    特征：不含 wzwsquestion/waf_zw_verify（那是第一种，可纯 Python 解），
+    但含有 WZWSREL 指向的原始 URL 编码串，页面只有一句 noscript 提示。
+    这种挑战必须真实浏览器执行 JS 才能拿到通行 Cookie，requests 无法破解。
+    """
+    if not text:
+        return False
+    if "wzwsquestion" in text or "waf_zw_verify" in text:
+        return False
+    if "WZWSREL" in text:
+        return True
+    return "Please enable JavaScript" in text and "messagetext" not in text
+
+
 def is_blocked_page(status_code: int, text: str) -> bool:
     """判断是否遭遇 403 阻断或网宿静态拦截页面."""
     if status_code == 403:

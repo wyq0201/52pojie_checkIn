@@ -343,6 +343,23 @@ def check_in_account(account_index: int, cookie_str: str) -> Dict[str, str]:
                 time.sleep(random.uniform(4.0, 6.0))
                 draw_resp = safe_request(session, "GET", URL_DRAW, headers=draw_headers)
 
+            # 网宿第二种挑战（混淆 JS 页）纯 Python 无法求解，只能退避后重新握手再打
+            for attempt in range(1, 4):
+                if not waf_solver.is_js_challenge(draw_resp.text):
+                    break
+                backoff = 8.0 * attempt + random.uniform(2.0, 5.0)
+                logger.warning(f"[{account_index}] 领奖接口命中网宿 JS 挑战（需浏览器执行），"
+                               f"第 {attempt}/3 次退避 {backoff:.1f} 秒后重新握手...")
+                session.close()
+                time.sleep(backoff)
+                home_refresh = safe_request(session, "GET", URL_HOME, headers=home_headers)
+                if waf_solver.is_waf_page(home_refresh.text):
+                    waf_solver.bypass_waf(session, URL_HOME, home_refresh.text)
+                    time.sleep(1.5)
+                draw_resp = safe_request(session, "GET", URL_DRAW, headers=draw_headers)
+            else:
+                logger.error(f"[{account_index}] 领奖接口 JS 挑战退避 3 次仍未通过，本次放弃领奖")
+
             # 4. 解析结果反馈
             result_text = ""
             if BeautifulSoup:
@@ -358,6 +375,8 @@ def check_in_account(account_index: int, cookie_str: str) -> Dict[str, str]:
             if not result_text:
                 if draw_resp.status_code == 403 or "403 Forbidden" in draw_resp.text:
                     status, msg = "失败", "接口触发 403 访问限制 (WAF/CDN 频控阻断)"
+                elif waf_solver.is_js_challenge(draw_resp.text):
+                    status, msg = "失败", "领奖接口被网宿 JS 挑战拦截（需浏览器环境执行）"
                 elif "您需要先登录才能继续本操作" in draw_resp.text:
                     status, msg = "失败", "Cookie 已失效"
                 elif "不是进行中的任务" in draw_resp.text or "今日已签到" in draw_resp.text:
